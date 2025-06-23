@@ -1,13 +1,13 @@
 mod app;
-mod profile;
-mod downloader;
-mod uploader;
 mod config;
+mod downloader;
+mod profile;
+mod uploader;
 mod utils;
 
 use anyhow::Result;
-use eframe::{self};
 use app::DownloaderApp;
+use eframe::{self};
 
 fn main() -> Result<()> {
     env_logger::init(); // Инициализация логгера
@@ -21,6 +21,7 @@ fn main() -> Result<()> {
         "Менеджер контента Wildberries",
         native_options,
         Box::new(|_cc| Ok(Box::new(DownloaderApp::default()))),
-    ).map_err(|e| anyhow::anyhow!("Ошибка GUI: {}", e))?;
+    )
+    .map_err(|e| anyhow::anyhow!("Ошибка GUI: {}", e))?;
     Ok(())
 }

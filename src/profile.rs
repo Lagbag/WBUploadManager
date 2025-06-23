@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::config::Config;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Profile {
@@ -22,10 +22,18 @@ impl ProfileManager {
         let config = Config::new()?;
         let config_file = config.get_config_file_path();
         let profiles: Vec<Profile> = if config_file.exists() {
-            let data = std::fs::read_to_string(&config_file)
-                .map_err(|e| anyhow::anyhow!("Не удалось прочитать файл конфигурации {}: {}", config_file.display(), e))?;
+            let data = std::fs::read_to_string(&config_file).map_err(|e| {
+                anyhow::anyhow!(
+                    "Не удалось прочитать файл конфигурации {}: {}",
+                    config_file.display(),
+                    e
+                )
+            })?;
             serde_json::from_str(&data).unwrap_or_else(|e| {
-                log::warn!("Ошибка парсинга конфигурации, используется профиль по умолчанию: {}", e);
+                log::warn!(
+                    "Ошибка парсинга конфигурации, используется профиль по умолчанию: {}",
+                    e
+                );
                 vec![Profile {
                     name: "Добавить".to_string(),
                     api_key: String::new(),
@@ -75,8 +83,13 @@ impl ProfileManager {
         let config_file = self.config.get_config_file_path();
         let data = serde_json::to_string_pretty(&self.profiles)
             .map_err(|e| anyhow::anyhow!("Ошибка сериализации профилей: {}", e))?;
-        std::fs::write(&config_file, data)
-            .map_err(|e| anyhow::anyhow!("Не удалось записать файл конфигурации {}: {}", config_file.display(), e))?;
+        std::fs::write(&config_file, data).map_err(|e| {
+            anyhow::anyhow!(
+                "Не удалось записать файл конфигурации {}: {}",
+                config_file.display(),
+                e
+            )
+        })?;
         log::info!("Профили сохранены в {}", config_file.display());
         Ok(())
     }

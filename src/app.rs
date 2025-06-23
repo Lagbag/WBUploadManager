@@ -1,13 +1,13 @@
-use std::sync::{Arc, Mutex};
-use std::path::Path;
-use eframe::egui;
-use eframe::App;
-use rfd::FileDialog;
-use arboard::Clipboard;
-use crate::profile::{Profile, ProfileManager};
-use crate::downloader::{Downloader, FileInfo};
-use crate::uploader::WbUploader;
 use crate::config::Config;
+use crate::downloader::{Downloader, FileInfo};
+use crate::profile::{Profile, ProfileManager};
+use crate::uploader::WbUploader;
+use arboard::Clipboard;
+use eframe::App;
+use eframe::egui;
+use rfd::FileDialog;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 pub struct DownloaderApp {
     urls: String,

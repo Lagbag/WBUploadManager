@@ -1,14 +1,14 @@
-use anyhow::{Result, Context};
+use crate::config::Config;
+use crate::utils::is_media_file;
+use anyhow::{Context, Result};
+use regex::Regex;
 use reqwest::blocking::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::Duration;
 use urlencoding::encode;
-use regex::Regex;
-use std::collections::HashSet;
 use walkdir::WalkDir;
-use crate::utils::is_media_file;
-use crate::config::Config;
 
 #[derive(Deserialize)]
 struct ResourceList {
@@ -55,14 +55,21 @@ pub struct Downloader {
 
 impl Downloader {
     pub fn new(public_keys: Vec<String>, prefixes: Vec<String>) -> Result<Self> {
-        log::info!("Инициализация Downloader с {} ключами и префиксами {:?}", public_keys.len(), prefixes);
+        log::info!(
+            "Инициализация Downloader с {} ключами и префиксами {:?}",
+            public_keys.len(),
+            prefixes
+        );
         let config = Config::new()?;
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(20))
             .connect_timeout(Duration::from_secs(5))
             .default_headers({
                 let mut headers = reqwest::header::HeaderMap::new();
-                headers.insert("User-Agent", reqwest::header::HeaderValue::from_static("Mozilla/5.0"));
+                headers.insert(
+                    "User-Agent",
+                    reqwest::header::HeaderValue::from_static("Mozilla/5.0"),
+                );
                 headers.insert("Accept", reqwest::header::HeaderValue::from_static("*/*"));
                 headers
             })
@@ -82,8 +89,13 @@ impl Downloader {
         let target_prefixes: HashSet<String> = self.prefixes.iter().cloned().collect();
 
         for public_key in &self.public_keys {
-            log::info!("Сканирование директории на Яндекс.Диске: {} для URL: {}", path, public_key);
-            let result = self.find_files_for_url(public_key, path, &mut found_prefixes, &target_prefixes)?;
+            log::info!(
+                "Сканирование директории на Яндекс.Диске: {} для URL: {}",
+                path,
+                public_key
+            );
+            let result =
+                self.find_files_for_url(public_key, path, &mut found_prefixes, &target_prefixes)?;
             files.extend(result);
 
             if target_prefixes.is_subset(&found_prefixes) {
@@ -94,7 +106,11 @@ impl Downloader {
         }
 
         if files.is_empty() {
-            log::warn!("Не найдено файлов с префиксами в {}: {:?}", path, self.prefixes);
+            log::warn!(
+                "Не найдено файлов с префиксами в {}: {:?}",
+                path,
+                self.prefixes
+            );
         } else {
             log::info!("Найдено {} файлов в {}", files.len(), path);
         }
@@ -116,43 +132,90 @@ impl Downloader {
         loop {
             let url = format!(
                 "https://cloud-api.yandex.net/v1/disk/public/resources?public_key={}&path={}&fields=_embedded.items,name,type&limit={}&offset={}",
-                encode(public_key), encode(path), limit, offset
+                encode(public_key),
+                encode(path),
+                limit,
+                offset
             );
             log::debug!("HTTP Request: GET {}", url);
 
             let mut attempts = 0;
             let max_attempts = 3;
             let response = loop {
-                log::debug!("Отправка HTTP-запроса к Яндекс.Диске (попытка {}/{}, offset={})", attempts + 1, max_attempts, offset);
+                log::debug!(
+                    "Отправка HTTP-запроса к Яндекс.Диске (попытка {}/{}, offset={})",
+                    attempts + 1,
+                    max_attempts,
+                    offset
+                );
                 match self.client.get(&url).send() {
                     Ok(response) => break response,
                     Err(e) => {
-                        log::error!("Ошибка HTTP запроса для {} (offset={}): {}", path, offset, e);
+                        log::error!(
+                            "Ошибка HTTP запроса для {} (offset={}): {}",
+                            path,
+                            offset,
+                            e
+                        );
                         attempts += 1;
                         if attempts >= max_attempts {
-                            log::error!("Не удалось получить ответ для {} (offset={}) после {} попыток", path, offset, max_attempts);
-                            return Err(anyhow::anyhow!("Не удалось получить ответ для {} после {} попыток", path, max_attempts));
+                            log::error!(
+                                "Не удалось получить ответ для {} (offset={}) после {} попыток",
+                                path,
+                                offset,
+                                max_attempts
+                            );
+                            return Err(anyhow::anyhow!(
+                                "Не удалось получить ответ для {} после {} попыток",
+                                path,
+                                max_attempts
+                            ));
                         }
                         std::thread::sleep(Duration::from_secs(5));
                     }
                 }
             };
 
-            log::debug!("Ответ от API Яндекс.Диска получен для {} (offset={})", path, offset);
+            log::debug!(
+                "Ответ от API Яндекс.Диска получен для {} (offset={})",
+                path,
+                offset
+            );
             let status = response.status();
-            let body = response.text()
+            let body = response
+                .text()
                 .map_err(|e| anyhow::anyhow!("Не удалось прочитать ответ для {}: {}", path, e))?;
-            log::trace!("HTTP Response: Status: {}, Body (preview): {}", status, body.chars().take(200).collect::<String>());
+            log::trace!(
+                "HTTP Response: Status: {}, Body (preview): {}",
+                status,
+                body.chars().take(200).collect::<String>()
+            );
 
             if !status.is_success() {
-                log::error!("Ошибка API Яндекс.Диска для {} (offset={}): Статус {}, Тело: {}", path, offset, status, body);
-                return Err(anyhow::anyhow!("Ошибка API Яндекс.Диска: Статус {}, Тело: {}", status, body));
+                log::error!(
+                    "Ошибка API Яндекс.Диска для {} (offset={}): Статус {}, Тело: {}",
+                    path,
+                    offset,
+                    status,
+                    body
+                );
+                return Err(anyhow::anyhow!(
+                    "Ошибка API Яндекс.Диска: Статус {}, Тело: {}",
+                    status,
+                    body
+                ));
             }
 
             log::debug!("Парсинг JSON-ответа для {} (offset={})", path, offset);
-            let resource_list: ResourceList = serde_json::from_str(&body)
-                .context(format!("Ошибка парсинга ответа Яндекс.Диска для {} (offset={})", path, offset))?;
-            log::debug!("JSON-ответ успешно распарсен для {} (offset={})", path, offset);
+            let resource_list: ResourceList = serde_json::from_str(&body).context(format!(
+                "Ошибка парсинга ответа Яндекс.Диска для {} (offset={})",
+                path, offset
+            ))?;
+            log::debug!(
+                "JSON-ответ успешно распарсен для {} (offset={})",
+                path,
+                offset
+            );
 
             let items = resource_list._embedded.items;
             if items.is_empty() {
@@ -161,22 +224,34 @@ impl Downloader {
             }
 
             for item in &items {
-                let item_path = if path == "/" { format!("/{}", item.name) } else { format!("{}/{}", path, item.name) };
+                let item_path = if path == "/" {
+                    format!("/{}", item.name)
+                } else {
+                    format!("{}/{}", path, item.name)
+                };
                 if item.item_type == "file" && is_media_file(&item.name) {
                     let base_name = item.name.to_lowercase();
-                    let matched_prefix = self.prefixes.iter()
+                    let matched_prefix = self
+                        .prefixes
+                        .iter()
                         .filter(|p| base_name.starts_with(&p.to_lowercase()))
                         .max_by_key(|p| p.len());
                     if let Some(prefix) = matched_prefix {
                         let articul = prefix.to_string();
                         found_prefixes.insert(articul.clone());
                         let remaining = &base_name[prefix.len()..];
-                        let photo_number = if let Some(caps) = Regex::new(r"^[_-](\d+)\.\w+$")?.captures(remaining) {
+                        let photo_number = if let Some(caps) =
+                            Regex::new(r"^[_-](\d+)\.\w+$")?.captures(remaining)
+                        {
                             caps.get(1).unwrap().as_str().parse::<u32>().unwrap_or(1)
                         } else if remaining.starts_with('.') {
                             1
                         } else {
-                            log::warn!("Файл {} содержит vendorCode {}, но не соответствует шаблону", item.name, prefix);
+                            log::warn!(
+                                "Файл {} содержит vendorCode {}, но не соответствует шаблону",
+                                item.name,
+                                prefix
+                            );
                             continue;
                         };
                         files.push(FileInfo {
@@ -185,9 +260,18 @@ impl Downloader {
                             articul: articul.clone(),
                             photo_number,
                         });
-                        log::info!("Найден файл: {} (vendorCode: {}, фото: {})", item.name, articul, photo_number);
+                        log::info!(
+                            "Найден файл: {} (vendorCode: {}, фото: {})",
+                            item.name,
+                            articul,
+                            photo_number
+                        );
                     } else {
-                        log::debug!("Файл {} не начинается ни с одного vendorCode: {:?}", item.name, self.prefixes);
+                        log::debug!(
+                            "Файл {} не начинается ни с одного vendorCode: {:?}",
+                            item.name,
+                            self.prefixes
+                        );
                     }
                 } else if item.item_type == "dir" {
                     subdirs.push(item_path);
@@ -195,11 +279,20 @@ impl Downloader {
             }
 
             offset += limit;
-            log::debug!("Обработано {} элементов для {}, переходим к следующей странице (offset={})", items.len(), path, offset);
+            log::debug!(
+                "Обработано {} элементов для {}, переходим к следующей странице (offset={})",
+                items.len(),
+                path,
+                offset
+            );
             std::thread::sleep(Duration::from_millis(500));
 
             if target_prefixes.is_subset(found_prefixes) {
-                log::info!("Все указанные vendorCode найдены в {}: {:?}", path, found_prefixes);
+                log::info!(
+                    "Все указанные vendorCode найдены в {}: {:?}",
+                    path,
+                    found_prefixes
+                );
                 break;
             }
         }
@@ -232,7 +325,10 @@ impl Downloader {
 
         if !source_path.is_dir() {
             log::error!("Ошибка: {} не является директорией", source_path.display());
-            return Err(anyhow::anyhow!("Папка {} не является директорией", source_path.display()));
+            return Err(anyhow::anyhow!(
+                "Папка {} не является директорией",
+                source_path.display()
+            ));
         }
 
         for entry in WalkDir::new(source_path).into_iter().filter_map(|e| e.ok()) {
@@ -240,26 +336,44 @@ impl Downloader {
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             if path.is_file() && is_media_file(&name) {
                 let base_name = name.to_lowercase();
-                if let Some(prefix) = self.prefixes.iter().find(|p| base_name.starts_with(&p.to_lowercase())) {
+                if let Some(prefix) = self
+                    .prefixes
+                    .iter()
+                    .find(|p| base_name.starts_with(&p.to_lowercase()))
+                {
                     let articul = prefix.to_string();
                     let remaining = &base_name[prefix.len()..];
-                    let photo_number = if let Some(caps) = Regex::new(r"^[_-](\d+)\.\w+$")?.captures(remaining) {
-                        caps[1].parse::<u32>().unwrap_or(1)
-                    } else if remaining.starts_with('.') {
-                        1
-                    } else {
-                        log::warn!("Файл {} содержит vendorCode {}, но не соответствует шаблону", name, prefix);
-                        continue;
-                    };
+                    let photo_number =
+                        if let Some(caps) = Regex::new(r"^[_-](\d+)\.\w+$")?.captures(remaining) {
+                            caps[1].parse::<u32>().unwrap_or(1)
+                        } else if remaining.starts_with('.') {
+                            1
+                        } else {
+                            log::warn!(
+                                "Файл {} содержит vendorCode {}, но не соответствует шаблону",
+                                name,
+                                prefix
+                            );
+                            continue;
+                        };
                     files.push(FileInfo {
                         name: name.clone(),
                         path: path.to_string_lossy().to_string(),
                         articul: articul.clone(),
                         photo_number,
                     });
-                    log::info!("Найден локальный файл: {} (vendorCode: {}, фото: {})", name, articul, photo_number);
+                    log::info!(
+                        "Найден локальный файл: {} (vendorCode: {}, фото: {})",
+                        name,
+                        articul,
+                        photo_number
+                    );
                 } else {
-                    log::debug!("Файл {} не начинается ни с одного vendorCode: {:?}", name, self.prefixes);
+                    log::debug!(
+                        "Файл {} не начинается ни с одного vendorCode: {:?}",
+                        name,
+                        self.prefixes
+                    );
                 }
             }
         }
@@ -272,7 +386,8 @@ impl Downloader {
             log::info!("Получение ссылки для: {} с URL: {}", file_path, public_key);
             let url = format!(
                 "https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key={}&path={}",
-                encode(public_key), encode(file_path)
+                encode(public_key),
+                encode(file_path)
             );
             log::debug!("HTTP Request: GET {}", url);
 
@@ -282,12 +397,19 @@ impl Downloader {
                 match self.client.get(&url).send() {
                     Ok(response) => {
                         let status = response.status();
-                        let body = response.text()
-                            .map_err(|e| anyhow::anyhow!("Не удалось прочитать ответ для {}: {}", file_path, e))?;
+                        let body = response.text().map_err(|e| {
+                            anyhow::anyhow!("Не удалось прочитать ответ для {}: {}", file_path, e)
+                        })?;
                         log::debug!("HTTP Response: Status: {}, Body: {}", status, body);
                         if status.is_success() {
-                            let download_link: DownloadLink = serde_json::from_str(&body)
-                                .map_err(|e| anyhow::anyhow!("Ошибка парсинга ссылки для {}: {}", file_path, e))?;
+                            let download_link: DownloadLink =
+                                serde_json::from_str(&body).map_err(|e| {
+                                    anyhow::anyhow!(
+                                        "Ошибка парсинга ссылки для {}: {}",
+                                        file_path,
+                                        e
+                                    )
+                                })?;
                             return Ok(download_link.href);
                         } else {
                             log::warn!("Ошибка получения ссылки для {}: {}", file_path, body);
@@ -303,14 +425,25 @@ impl Downloader {
                 }
                 attempts += 1;
                 if attempts >= max_attempts {
-                    log::error!("Не удалось получить ссылку для {} после {} попыток", file_path, max_attempts);
+                    log::error!(
+                        "Не удалось получить ссылку для {} после {} попыток",
+                        file_path,
+                        max_attempts
+                    );
                     break;
                 }
-                log::debug!("Повторная попытка через 5 секунд ({}/{})", attempts, max_attempts);
+                log::debug!(
+                    "Повторная попытка через 5 секунд ({}/{})",
+                    attempts,
+                    max_attempts
+                );
                 std::thread::sleep(Duration::from_secs(5));
             }
         }
-        Err(anyhow::anyhow!("Не удалось получить ссылку для {} ни с одного URL", file_path))
+        Err(anyhow::anyhow!(
+            "Не удалось получить ссылку для {} ни с одного URL",
+            file_path
+        ))
     }
 
     pub fn download_all(&self) -> Result<Vec<FileInfo>> {
@@ -322,7 +455,12 @@ impl Downloader {
         Ok(files)
     }
 
-    pub fn generate_media_json(&self, nm_id: i64, files: &[FileInfo], _server_port: Option<u16>) -> Result<MediaOutput> {
+    pub fn generate_media_json(
+        &self,
+        nm_id: i64,
+        files: &[FileInfo],
+        _server_port: Option<u16>,
+    ) -> Result<MediaOutput> {
         log::info!("Генерация JSON для nmId: {}", nm_id);
         let mut urls = vec![];
         for file in files {
@@ -340,14 +478,23 @@ impl Downloader {
                 }
             } else {
                 urls.push(format!("file://{}", file.path));
-                log::info!("Добавлен локальный путь для {}: file://{}", file.name, file.path);
+                log::info!(
+                    "Добавлен локальный путь для {}: file://{}",
+                    file.name,
+                    file.path
+                );
             }
         }
         if urls.is_empty() {
             log::error!("Не найдено файлов для nmId {}", nm_id);
             return Err(anyhow::anyhow!("Не найдено файлов для nmId: {}", nm_id));
         }
-        log::info!("Сгенерировано {} URLs для nmId {}: {:?}", urls.len(), nm_id, urls);
+        log::info!(
+            "Сгенерировано {} URLs для nmId {}: {:?}",
+            urls.len(),
+            nm_id,
+            urls
+        );
         Ok(MediaOutput { nm_id, data: urls })
     }
 

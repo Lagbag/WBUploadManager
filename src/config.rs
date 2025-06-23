@@ -13,8 +13,13 @@ impl Config {
         let proj_dirs = ProjectDirs::from("com", "yandex", "downloader")
             .ok_or_else(|| anyhow::anyhow!("Не удалось определить директорию конфигурации"))?;
         let config_dir = proj_dirs.config_dir().to_path_buf();
-        std::fs::create_dir_all(&config_dir)
-            .map_err(|e| anyhow::anyhow!("Не удалось создать директорию конфигурации {}: {}", config_dir.display(), e))?;
+        std::fs::create_dir_all(&config_dir).map_err(|e| {
+            anyhow::anyhow!(
+                "Не удалось создать директорию конфигурации {}: {}",
+                config_dir.display(),
+                e
+            )
+        })?;
         log::info!("Конфигурационная директория: {}", config_dir.display());
         Ok(Config { config_dir })
     }
