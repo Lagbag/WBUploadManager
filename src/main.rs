@@ -1,15 +1,18 @@
+mod app;
+mod profile;
+mod downloader;
+mod uploader;
+mod config;
+mod utils;
+
 use anyhow::Result;
 use eframe::{self};
 use app::DownloaderApp;
 
-mod profile;
-mod downloader;
-mod uploader;
-mod app;
-mod utils;
-mod config;
-
 fn main() -> Result<()> {
+    env_logger::init(); // Инициализация логгера
+    log::info!("Приложение запущено");
+
     let native_options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default().with_inner_size([800.0, 1000.0]),
         ..Default::default()
