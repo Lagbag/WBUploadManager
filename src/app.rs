@@ -158,9 +158,6 @@ impl App for DownloaderApp {
                 };
                 ui.label(egui::RichText::new("📥 Источник файлов").strong().size(22.0));
                 ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.use_local_path, "Использовать локальную папку");
-                });
                 ui.add_space(10.0);
                 if !self.use_local_path {
                     ui.horizontal(|ui| {
