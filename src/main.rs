@@ -1,4 +1,4 @@
-#![cfg_attr(windows, windows_subsystem = "windows")]
+#![cfg_attr(windows, windows_subsystem = "windows")] // Закоментировать если нужно посмотреть ошибки(логи)
 mod app;
 mod config;
 mod downloader;
