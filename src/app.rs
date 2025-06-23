@@ -165,7 +165,7 @@ impl App for DownloaderApp {
                 if !self.use_local_path {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("🔗 Ссылки на Яндекс.Диск (через запятую):").strong());
-                        text_edit_with_context_menu(ui, &mut self.urls, 400.0, "https://disk.yandex.ru/d/xxx/09.06,https://disk.yandex.ru/d/xxx/10.06");
+                        text_edit_with_context_menu(ui, &mut self.urls, 400.0, "https://disk.yandex.ru/d/link1,https://disk.yandex.ru/d/link2,etc");
                     });
                 } else {
                     ui.horizontal(|ui| {
@@ -196,7 +196,7 @@ impl App for DownloaderApp {
                         egui::ScrollArea::vertical()
                             .max_height(100.0)
                             .show(ui, |ui| {
-                                text_edit_with_context_menu(ui, &mut self.file_names, 400.0, "PRINT-NNS-YVG-001\nPRINT-NNS-YVG-002");
+                                text_edit_with_context_menu(ui, &mut self.file_names, 400.0, "VendorCode001\nVendorCode001\nEtc");
                             });
                     });
                 });
