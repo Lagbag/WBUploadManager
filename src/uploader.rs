@@ -1,12 +1,16 @@
 use anyhow::Result;
 use reqwest::blocking::{Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 pub struct WbUploader {
     client: Client,
+    #[allow(dead_code)]
     api_key: String,
 }
 
@@ -52,7 +56,7 @@ struct Card {
 }
 
 impl WbUploader {
-    pub fn new(api_key: String) -> Result<Self> {
+    pub fn new(api_key: String) -> Result<Self, anyhow::Error> {
         if api_key.is_empty() {
             log::error!("API ключ пустой");
             return Err(anyhow::anyhow!("API ключ пустой"));
@@ -85,7 +89,7 @@ impl WbUploader {
         Ok(Self { client, api_key })
     }
 
-    pub fn get_nm_id_by_vendor_code(&self, vendor_code: &str) -> Result<i64> {
+    pub fn get_nm_id_by_vendor_code(&self, vendor_code: &str) -> Result<i64, anyhow::Error> {
         log::info!("Запрос nmId для vendorCode: {}", vendor_code);
         let request_body = CardRequest {
             settings: CardSettings {
@@ -159,7 +163,7 @@ impl WbUploader {
         nm_id: i64,
         urls: &[String],
         processed_files: &Arc<Mutex<usize>>,
-    ) -> Result<()> {
+    ) -> Result<(), anyhow::Error> {
         log::info!("Начало загрузки ссылок для nmId {}", nm_id);
         for url in urls {
             if !url.starts_with("http://")
@@ -243,6 +247,142 @@ impl WbUploader {
                         );
                         return Err(anyhow::anyhow!(
                             "Не удалось загрузить ссылки после {} попыток",
+                            max_attempts
+                        ));
+                    }
+                    log::warn!(
+                        "Ошибка HTTP запроса, повторная попытка через 60 секунд (попытка {}/{})",
+                        attempts + 1,
+                        max_attempts
+                    );
+                    thread::sleep(Duration::from_secs(60));
+                }
+            }
+            attempts += 1;
+        }
+    }
+
+    pub fn upload_local_file(
+        &self,
+        nm_id: i64,
+        file_path: &str,
+        photo_number: u32,
+        processed_files: &Arc<Mutex<usize>>,
+    ) -> Result<(), anyhow::Error> {
+        log::info!(
+            "Начало загрузки файла {} для nmId {} с номером фото {}",
+            file_path,
+            nm_id,
+            photo_number
+        );
+
+        // Проверка существования файла
+        if !Path::new(file_path).exists() {
+            log::error!("Файл {} не существует", file_path);
+            return Err(anyhow::anyhow!("Файл {} не существует", file_path));
+        }
+
+        // Чтение файла в память
+        let mut file = File::open(file_path).map_err(|e| {
+            anyhow::anyhow!("Не удалось открыть файл {}: {}", file_path, e)
+        })?;
+        let mut file_content = Vec::new();
+        file.read_to_end(&mut file_content).map_err(|e| {
+            anyhow::anyhow!("Не удалось прочитать файл {}: {}", file_path, e)
+        })?;
+
+        let mut attempts = 0;
+        let max_attempts = 3;
+        loop {
+            // Формирование multipart формы внутри цикла
+            let form = reqwest::blocking::multipart::Form::new().part(
+                "uploadfile",
+                reqwest::blocking::multipart::Part::bytes(file_content.clone())
+                    .file_name(Path::new(file_path).file_name().unwrap().to_string_lossy().to_string())
+                    .mime_str("application/octet-stream")?,
+            );
+
+            log::debug!(
+                "HTTP Request: POST https://content-api.wildberries.ru/content/v3/media/file\nX-Nm-Id: {}, X-Photo-Number: {}",
+                nm_id,
+                photo_number
+            );
+            let response = self
+                .client
+                .post("https://content-api.wildberries.ru/content/v3/media/file")
+                .header("X-Nm-Id", nm_id.to_string())
+                .header("X-Photo-Number", photo_number.to_string())
+                .multipart(form)
+                .send();
+
+            match response {
+                Ok(response) => {
+                    let status = response.status();
+                    let response_body = response.text().map_err(|e| {
+                        anyhow::anyhow!(
+                            "Не удалось прочитать ответ для файла {}: {}",
+                            file_path,
+                            e
+                        )
+                    })?;
+                    log::debug!("HTTP Response: Status: {}, Body: {}", status, response_body);
+
+                    if status.is_success() {
+                        log::info!(
+                            "Файл {} загружен для nmId {} с номером фото {}",
+                            file_path,
+                            nm_id,
+                            photo_number
+                        );
+                        {
+                            let mut processed = processed_files.lock().unwrap();
+                            *processed += 1;
+                        }
+                        return Ok(());
+                    } else if status.as_u16() == 429 {
+                        log::warn!(
+                            "Ошибка 429: Слишком много запросов для файла {}, повторная попытка через 60 секунд (попытка {}/{})",
+                            file_path,
+                            attempts + 1,
+                            max_attempts
+                        );
+                        if attempts >= max_attempts {
+                            log::error!(
+                                "Не удалось загрузить файл {} после {} попыток",
+                                file_path,
+                                max_attempts
+                            );
+                            return Err(anyhow::anyhow!(
+                                "Не удалось загрузить файл после {} попыток",
+                                max_attempts
+                            ));
+                        }
+                        thread::sleep(Duration::from_secs(60));
+                    } else {
+                        log::error!(
+                            "Ошибка загрузки файла {} для nmId {}: Статус {}, Тело: {}",
+                            file_path,
+                            nm_id,
+                            status,
+                            response_body
+                        );
+                        return Err(anyhow::anyhow!(
+                            "Ошибка загрузки файла: Статус {}, Тело: {}",
+                            status,
+                            response_body
+                        ));
+                    }
+                }
+                Err(e) => {
+                    log::error!("Ошибка HTTP запроса для файла {}: {}", file_path, e);
+                    if attempts >= max_attempts {
+                        log::error!(
+                            "Не удалось загрузить файл {} после {} попыток",
+                            file_path,
+                            max_attempts
+                        );
+                        return Err(anyhow::anyhow!(
+                            "Не удалось загрузить файл после {} попыток",
                             max_attempts
                         ));
                     }

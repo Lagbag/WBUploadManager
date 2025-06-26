@@ -28,6 +28,7 @@ impl Config {
         self.config_dir.join("profiles.json")
     }
 
+    #[allow(dead_code)]
     pub fn get_cookies_file_path(&self) -> PathBuf {
         self.config_dir.join("cookies.json")
     }

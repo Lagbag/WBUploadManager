@@ -1,4 +1,3 @@
-use crate::config::Config;
 use crate::utils::is_media_file;
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -49,8 +48,7 @@ pub struct MediaOutput {
 pub struct Downloader {
     client: Client,
     public_keys: Vec<String>,
-    prefixes: Vec<String>,
-    config: Config,
+    pub(crate) prefixes: Vec<String>,
 }
 
 impl Downloader {
@@ -60,7 +58,6 @@ impl Downloader {
             public_keys.len(),
             prefixes
         );
-        let config = Config::new()?;
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(20))
             .connect_timeout(Duration::from_secs(5))
@@ -79,7 +76,6 @@ impl Downloader {
             client,
             public_keys,
             prefixes,
-            config,
         })
     }
 
@@ -446,6 +442,7 @@ impl Downloader {
         ))
     }
 
+    #[allow(dead_code)]
     pub fn download_all(&self) -> Result<Vec<FileInfo>> {
         log::info!("Начало поиска всех файлов");
         let files = self.find_files("/")?;
@@ -498,8 +495,19 @@ impl Downloader {
         Ok(MediaOutput { nm_id, data: urls })
     }
 
-    pub fn cleanup_file(&self, _file_path: &str) -> Result<()> {
-        log::info!("Очистка не требуется, файлы не сохраняются локально");
+    #[allow(dead_code)]
+    pub fn cleanup_file(&self, file_path: &str) -> Result<()> {
+        if file_path.starts_with("file://") {
+            let local_path = file_path.strip_prefix("file://").unwrap_or(file_path);
+            log::info!("Удаление локального файла: {}", local_path);
+            // Uncomment the following lines if local file deletion is desired
+            // std::fs::remove_file(local_path).map_err(|e| {
+            //     anyhow::anyhow!("Не удалось удалить файл {}: {}", local_path, e)
+            // })?;
+            log::info!("Удаление локального файла {} пока не реализовано", local_path);
+        } else {
+            log::info!("Файлы, полученные по URL ({}), не удаляются", file_path);
+        }
         Ok(())
     }
 }
